@@ -2,161 +2,269 @@ from tkinter import Tk, filedialog, messagebox
 import pandas as pd
 from collections import defaultdict
 
-def process_sheet(df):
-    # Column J = 10th column
-    dt_series = pd.to_datetime(
-        df.iloc[:, 9],
-        dayfirst=True,
-        errors="coerce"
+CATEGORIES = ["LPG", "SALP", "ALP"]
+from openpyxl import load_workbook
+from openpyxl.styles import Font, PatternFill
+
+
+def format_output_excel(filename):
+
+    wb = load_workbook(filename)
+    ws = wb.active
+
+    bold_font = Font(bold=True)
+
+    date_fill = PatternFill(
+        fill_type="solid",
+        start_color="D9EAD3",
+        end_color="D9EAD3"
     )
 
-    counts = defaultdict(int)
+    total_fill = PatternFill(
+        fill_type="solid",
+        start_color="FFF2CC",
+        end_color="FFF2CC"
+    )
 
-    for dt in dt_series.dropna():
-        date_part = dt.strftime("%d/%m/%y")
+    header_fill = PatternFill(
+        fill_type="solid",
+        start_color="DDEBF7",
+        end_color="DDEBF7"
+    )
 
-        start_hour = dt.hour
-        end_hour = (start_hour + 1) % 24
+    # Header row
+    for cell in ws[1]:
+        cell.font = bold_font
+        cell.fill = header_fill
 
-        bucket = f"{date_part} {start_hour:02d}--{end_hour:02d}"
+    for row in ws.iter_rows():
 
-        counts[bucket] += 1
+        first_col = str(row[0].value or "")
+        second_col = str(row[1].value or "")
 
-    return counts
+        # Date rows
+        if first_col.startswith("Date :"):
+            for cell in row:
+                cell.font = bold_font
+                cell.fill = date_fill
 
-Tk().withdraw()
+        # TOTAL rows
+        if second_col == "TOTAL" or second_col == "G TOTAL":
+            for cell in row:
+                cell.font = bold_font
+                cell.fill = total_fill
+
+    # Auto width
+    for column in ws.columns:
+
+        max_length = 0
+        column_letter = column[0].column_letter
+
+        for cell in column:
+            try:
+                max_length = max(
+                    max_length,
+                    len(str(cell.value))
+                )
+            except:
+                pass
+
+        ws.column_dimensions[column_letter].width = max_length + 3
+
+    wb.save(filename)
+
+def read_file_auto(file_path):
+    for header_row in range(5):
+        try:
+            if file_path.lower().endswith(".ods"):
+                df = pd.read_excel(file_path, engine="odf", header=header_row)
+            else:
+                df = pd.read_excel(file_path, header=header_row)
+
+            cols = [
+                str(c).replace("\n", " ").strip().upper()
+                for c in df.columns
+            ]
+
+            has_desig = "ORIGDESIG" in cols
+            has_available = any("AVAILABLE" in c for c in cols)
+
+            if has_desig and has_available:
+                return df
+        except Exception:
+            pass
+
+    raise ValueError(
+        "Could not locate ORIGDESIG / AVAILABLE columns"
+    )
+
+
+def find_column(df, target):
+    target = target.strip().upper()
+
+    for col in df.columns:
+        col_clean = str(col).replace("\n", " ").strip().upper()
+
+        if target == col_clean:
+            return col
+
+    raise ValueError(
+        f"Column '{target}' not found.\nColumns detected:\n{list(df.columns)}"
+    )
+
+
+def hour_bucket(dt):
+    start_hour = dt.hour
+    end_hour = (start_hour + 1) % 24
+    return f"{start_hour:02d}--{end_hour:02d}"
+
+
+root = Tk()
+root.withdraw()
 
 file_path = filedialog.askopenfilename(
-    title="Select workbook containing LPG and ALP sheets",
-    filetypes=[("Excel/ODS Files", "*.xlsx *.ods")]
+    title="Select Crew Availability Report",
+    filetypes=[
+        ("Excel Files", "*.xlsx *.xls"),
+        ("ODS Files", "*.ods")
+    ]
 )
 
 if not file_path:
     raise SystemExit("No file selected")
 
 try:
+    df = read_file_auto(file_path)
 
-    if file_path.lower().endswith(".ods"):
-        lpg = pd.read_excel(
-            file_path,
-            sheet_name="lpg",
-            engine="odf",
-            dtype=str
-        )
+    desig_col = find_column(df, "ORIGDESIG")
 
-        alp = pd.read_excel(
-            file_path,
-            sheet_name="alp",
-            engine="odf",
-            dtype=str
-        )
+    
 
-    else:
-        lpg = pd.read_excel(
-            file_path,
-            sheet_name="lpg",
-            dtype=str
-        )
-
-        alp = pd.read_excel(
-            file_path,
-            sheet_name="alp",
-            dtype=str
-        )
-
-    lpg_counts = process_sheet(lpg)
-    alp_counts = process_sheet(alp)
-
-    all_buckets = sorted(
-        set(lpg_counts.keys()) | set(alp_counts.keys())
+    available_col = next(
+        c for c in df.columns
+        if "AVAILABLE" in str(c).upper()
     )
+
+    counts = defaultdict(
+        lambda: {
+         
+            "LPG Available": 0,
+           
+            "SALP Available": 0,
+          
+            "ALP Available": 0,
+        }
+    )
+
+    for _, row in df.iterrows():
+        category = str(row[desig_col]).strip().upper()
+
+        if category not in CATEGORIES:
+            continue
+
+        
+
+        
+        available_dt = pd.to_datetime(
+            row[available_col],
+            dayfirst=True,
+            errors="coerce"
+        )
+
+        if pd.notna(available_dt):
+            date_str = available_dt.strftime("%d/%m/%y")
+            key = (date_str, hour_bucket(available_dt))
+            counts[key][f"{category} Available"] += 1
 
     rows = []
 
-    current_date = None
-    date_lpg_total = 0
-    date_alp_total = 0
+    grand_totals = {
+      
+        "LPG Available": 0,
+       
+        "SALP Available": 0,
+      
+        "ALP Available": 0,
+    }
 
-    grand_lpg = 0
-    grand_alp = 0
-
-    for bucket in all_buckets:
-
-        date_part = bucket.split()[0]
-
-        if current_date is None:
-            current_date = date_part
-
-        if date_part != current_date:
-
-            rows.append([
-                f"TOTAL {current_date}",
-                date_lpg_total,
-                date_alp_total
-            ])
-
-            grand_lpg += date_lpg_total
-            grand_alp += date_alp_total
-
-            date_lpg_total = 0
-            date_alp_total = 0
-
-            current_date = date_part
-
-        lpg_val = lpg_counts.get(bucket, 0)
-        alp_val = alp_counts.get(bucket, 0)
-
-        rows.append([
-            bucket,
-            lpg_val,
-            alp_val
-        ])
-
-        date_lpg_total += lpg_val
-        date_alp_total += alp_val
-
-    if current_date is not None:
-
-        rows.append([
-            f"TOTAL {current_date}",
-            date_lpg_total,
-            date_alp_total
-        ])
-
-        grand_lpg += date_lpg_total
-        grand_alp += date_alp_total
-
-    rows.append([
-        "G Total",
-        grand_lpg,
-        grand_alp
-    ])
-
-    output = pd.DataFrame(
-        rows,
-        columns=[
-            "Time Slot",
-            "LPG",
-            "ALP"
-        ]
+    all_dates = sorted(
+        set(date for date, _ in counts.keys()),
+        key=lambda x: pd.to_datetime(x, dayfirst=True)
     )
 
-    output_file = "output.xlsx"
+    for date_str in all_dates:
 
-    with pd.ExcelWriter(output_file) as writer:
-        output.to_excel(
-            writer,
-            sheet_name="Summary",
-            index=False
-        )
+        rows.append({
+            "Date": f"Date : {date_str}",
+            "Time Slot": "",
+          
+            "LPG Available": "",
+         
+            "SALP Available": "",
+           
+            "ALP Available": ""
+        })
+
+        date_total = {
+           
+            "LPG Available": 0,
+        
+            "SALP Available": 0,
+         
+            "ALP Available": 0,
+        }
+
+        for hour in range(24):
+            slot = f"{hour:02d}--{(hour + 1) % 24:02d}"
+            values = counts[(date_str, slot)]
+
+            rows.append({
+                "Date": "",
+                "Time Slot": slot,
+                **values
+            })
+
+            for col in date_total:
+                date_total[col] += values[col]
+                grand_totals[col] += values[col]
+
+        rows.append({
+            "Date": "",
+            "Time Slot": "TOTAL",
+            **date_total
+        })
+
+        rows.append({
+            "Date": "",
+            "Time Slot": "",
+             " ": "",
+            "LPG Available": "",
+            " ": "",
+            "SALP Available": "",
+            " ": "",
+            "ALP Available": ""
+        })
+
+    rows.append({
+        "Date": "",
+        "Time Slot": "G TOTAL",
+        **grand_totals
+    })
+
+    output = pd.DataFrame(rows)
+
+    output.to_excel(
+        "output.xlsx",
+        sheet_name="Crew Summary",
+        index=False
+    )
+
+    format_output_excel("output.xlsx")
 
     messagebox.showinfo(
         "Success",
-        f"Output saved as {output_file}"
+        "output.xlsx generated successfully"
     )
 
 except Exception as e:
-    messagebox.showerror(
-        "Error",
-        str(e)
-    )
+    messagebox.showerror("Error", str(e))

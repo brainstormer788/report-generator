@@ -10,7 +10,7 @@ jobs:
 
     steps:
 
-      - name: Checkout
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
       - name: Setup Python
@@ -25,12 +25,18 @@ jobs:
           pip install openpyxl
           pip install odfpy
 
-      - name: Build EXE
+      - name: Build Executable
         run: |
           python build.py
 
-      - name: Upload EXE
+      - name: Create ZIP
+        run: |
+          powershell Compress-Archive `
+            -Path dist\ReportGenerator.exe `
+            -DestinationPath ReportGenerator-Windows.zip
+
+      - name: Upload ZIP
         uses: actions/upload-artifact@v4
         with:
           name: ReportGenerator-Windows
-          path: dist/*
+          path: ReportGenerator-Windows.zip
