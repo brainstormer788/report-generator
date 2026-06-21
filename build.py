@@ -101,9 +101,15 @@ def main():
         )
 
     clean()
+
     ensure_project_folders()
+
+    install_dependencies()
+
     build_exe()
+
     show_result()
+
 
 if __name__ == "__main__":
     main()

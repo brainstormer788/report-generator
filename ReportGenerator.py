@@ -251,20 +251,46 @@ try:
         **grand_totals
     })
 
-    output = pd.DataFrame(rows)
 
-    output.to_excel(
-        "output.xlsx",
+except Exception as e:
+    messagebox.showerror("Error", str(e))
+
+
+from datetime import datetime
+from pathlib import Path
+
+
+def save_report(output_df):
+    """
+    Save report using computer execution timestamp.
+    Creates Reports folder automatically.
+    Never overwrites previous reports.
+    """
+
+    Path("Reports").mkdir(exist_ok=True)
+
+    timestamp = datetime.now().strftime(
+        "%d-%m-%Y_%H-%M-%S"
+    )
+
+    output_file = (
+        f"Reports/Crew_Report_{timestamp}.xlsx"
+    )
+
+    output_df.to_excel(
+        output_file,
         sheet_name="Crew Summary",
         index=False
     )
 
-    format_output_excel("output.xlsx")
+    return output_file
 
-    messagebox.showinfo(
-        "Success",
-        "output.xlsx generated successfully"
-    )
+output = pd.DataFrame(rows)
+output_file = save_report(output)
 
-except Exception as e:
-    messagebox.showerror("Error", str(e))
+messagebox.showinfo(
+    "Success",
+    f"Report saved successfully.\n\n{output_file}"
+)
+    
+
