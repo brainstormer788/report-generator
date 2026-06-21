@@ -11,7 +11,6 @@ def clean():
     """
     Remove previous build artifacts
     """
-
     for folder in ["build", "dist"]:
         if os.path.exists(folder):
             shutil.rmtree(folder)
@@ -26,7 +25,6 @@ def install_dependencies():
     """
     Install required packages
     """
-
     packages = [
         "pyinstaller",
         "pandas",
@@ -44,11 +42,17 @@ def install_dependencies():
         ])
 
 
+def ensure_project_folders():
+    """
+    Create folders required by ReportGenerator
+    """
+    os.makedirs("Reports", exist_ok=True)
+
+
 def build_exe():
     """
-    Build Windows executable
+    Build executable
     """
-
     cmd = [
         sys.executable,
         "-m",
@@ -72,39 +76,34 @@ def build_exe():
 
 
 def show_result():
-
     exe_path = os.path.join(
         "dist",
         f"{EXE_NAME}.exe"
     )
 
-    print("\n" + "=" * 50)
+    print("\n" + "=" * 60)
 
     if os.path.exists(exe_path):
         print("BUILD SUCCESSFUL")
-        print(f"Executable: {exe_path}")
+        print(f"Executable : {exe_path}")
+        print("Reports Folder : Reports/")
     else:
         print("BUILD FINISHED")
         print("Check dist folder")
 
-    print("=" * 50)
+    print("=" * 60)
 
 
 def main():
-
     if not os.path.exists(MAIN_FILE):
         raise FileNotFoundError(
             f"{MAIN_FILE} not found"
         )
 
     clean()
-
-    install_dependencies()
-
+    ensure_project_folders()
     build_exe()
-
     show_result()
-
 
 if __name__ == "__main__":
     main()
